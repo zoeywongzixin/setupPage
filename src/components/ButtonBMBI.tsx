@@ -1,7 +1,7 @@
 import React from "react";
 
 const ButtonBMBO: React.FC = () => {
-    return <button>BM/BO</button>;
+    return <button>BM/BI</button>;
 };
 
 // Add this line at the very bottom:

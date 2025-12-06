@@ -8,21 +8,15 @@ import {
 import ArrowBackIcon from '@mui/icons-material/ArrowBack';
 import CheckCircleIcon from '@mui/icons-material/CheckCircle';
 import axios from 'axios';
-
-// Standard Security Questions List
-const SECURITY_QUESTIONS = [
-    "What is your mother's maiden name?",
-    "What is the name of your first pet?",
-    "What was the name of your elementary school?",
-    "What city were you born in?",
-    "What is your favorite food?",
-    "What is the make of your first car?"
-];
+import { useLanguage } from '../context/LanguageContext'; // ✅ Import Language Hook
 
 const SignUpSecurity: React.FC = () => {
     const { state } = useLocation();
     const navigate = useNavigate();
     const [loading, setLoading] = useState(false);
+
+    // ✅ Get translations
+    const { t } = useLanguage();
 
     // Form State
     const [q1, setQ1] = useState('');
@@ -47,14 +41,11 @@ const SignUpSecurity: React.FC = () => {
         finalData.append("q2", q2);
         finalData.append("a2", a2);
 
-        // If we had a voice file in state, append it too (optional)
-        // if (state?.voiceFile) finalData.append("voice_file", state.voiceFile);
-
         try {
             // 2. Try sending to Backend
             await axios.post("http://localhost:8000/signup-finalize", finalData);
             alert("Registration Complete!");
-            navigate('/signin'); // Go to Login
+            navigate('/signin');
         } catch (error) {
             console.log("Server error, using Mock Success...");
 
@@ -68,34 +59,35 @@ const SignUpSecurity: React.FC = () => {
         }
     };
 
+    // ✅ The 'return' is now correctly INSIDE the function
     return (
         <Container maxWidth="sm" sx={{ mt: 5 }}>
             <Card sx={{ p: 4, boxShadow: 3 }}>
                 <Typography variant="h4" align="center" gutterBottom fontWeight="bold">
-                    Security Setup
+                    {t.securityTitle}
                 </Typography>
                 <Typography variant="body2" align="center" color="text.secondary" sx={{ mb: 4 }}>
-                    Choose 2 security questions to recover your account if you forget your credentials.
+                    {t.securityDesc}
                 </Typography>
 
                 <Stack spacing={3}>
                     {/* --- QUESTION 1 --- */}
                     <Box>
                         <FormControl fullWidth>
-                            <InputLabel>Security Question 1</InputLabel>
+                            <InputLabel>{t.q1Label}</InputLabel>
                             <Select
                                 value={q1}
-                                label="Security Question 1"
+                                label={t.q1Label}
                                 onChange={(e) => setQ1(e.target.value)}
                             >
-                                {SECURITY_QUESTIONS.map((q) => (
+                                {t.questions.map((q) => (
                                     <MenuItem key={q} value={q}>{q}</MenuItem>
                                 ))}
                             </Select>
                         </FormControl>
                         <TextField
                             fullWidth
-                            label="Answer 1"
+                            label={t.a1Label}
                             variant="outlined"
                             sx={{ mt: 1 }}
                             value={a1}
@@ -106,20 +98,20 @@ const SignUpSecurity: React.FC = () => {
                     {/* --- QUESTION 2 --- */}
                     <Box>
                         <FormControl fullWidth>
-                            <InputLabel>Security Question 2</InputLabel>
+                            <InputLabel>{t.q2Label}</InputLabel>
                             <Select
                                 value={q2}
-                                label="Security Question 2"
+                                label={t.q2Label}
                                 onChange={(e) => setQ2(e.target.value)}
                             >
-                                {SECURITY_QUESTIONS.map((q) => (
+                                {t.questions.map((q) => (
                                     <MenuItem key={q} value={q}>{q}</MenuItem>
                                 ))}
                             </Select>
                         </FormControl>
                         <TextField
                             fullWidth
-                            label="Answer 2"
+                            label={t.a2Label}
                             variant="outlined"
                             sx={{ mt: 1 }}
                             value={a2}
@@ -137,7 +129,7 @@ const SignUpSecurity: React.FC = () => {
                         fullWidth
                         onClick={() => navigate(-1)}
                     >
-                        Back
+                        {t.back}
                     </Button>
 
                     <Button
@@ -149,7 +141,7 @@ const SignUpSecurity: React.FC = () => {
                         onClick={handleSubmit}
                         disabled={loading}
                     >
-                        {loading ? <CircularProgress size={24} color="inherit" /> : "Complete Sign Up"}
+                        {loading ? <CircularProgress size={24} color="inherit" /> : t.completeBtn}
                     </Button>
                 </Box>
             </Card>
