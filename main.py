@@ -5,6 +5,7 @@ import shutil
 import os
 import json
 import random
+import uuid
 
 app = FastAPI()
 
@@ -139,6 +140,35 @@ async def login_initiate(icNumber: str = Form(...)):
 
     selected = random.choice(questions)
     return {"success": True, "question": selected["question"]}
+
+
+@app.post("/login/verify-voice")
+async def verify_voice(icNumber: str = Form(...), voice_file: UploadFile = File(...)):
+    """Verify user's voice password during login"""
+    user_id = clean_ic(icNumber)
+    user = users_db.get(user_id)
+    
+    if not user:
+        return {"success": False, "message": "User not found"}
+    
+    stored_voice_path = user.get("voice_path")
+    if not stored_voice_path:
+        return {"success": False, "message": "No voice registered"}
+    
+    # For now, we'll do a simple file comparison
+    # In production, you'd use voice recognition/ML to compare voices
+    # This is a placeholder - you can implement actual voice verification later
+    temp_path = f"voices/temp_{user_id}_{uuid.uuid4()}.wav"
+    with open(temp_path, "wb") as buffer:
+        shutil.copyfileobj(voice_file.file, buffer)
+    
+    # TODO: Implement actual voice verification using ML/voice recognition
+    # For now, we'll accept any voice file (you should replace this with real verification)
+    # This is a mock implementation
+    os.remove(temp_path)  # Clean up temp file
+    
+    # Mock verification - in production, compare voices using ML
+    return {"success": True, "message": "Voice verified"}
 
 
 @app.post("/login/verify")

@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useRef } from 'react';
 import {
     Button,
     Container,
@@ -9,20 +9,45 @@ import {
     DialogTitle,
     DialogContent,
     DialogActions,
-    TextField
+    TextField,
+    Fab,
+    CircularProgress,
+    Alert
 } from '@mui/material';
 import { useNavigate } from 'react-router-dom';
 import VoiceInput from '../components/VoiceInput';
-import { checkUserExists } from '../services/api';
+import MicIcon from '@mui/icons-material/Mic';
+import StopIcon from '@mui/icons-material/Stop';
+import { checkUserExists, verifyVoice, initiateLogin, verifyLogin } from '../services/api';
+import { keyframes } from '@emotion/react';
+
+// Pulse Animation for recording
+const pulse = keyframes`
+  0% { box-shadow: 0 0 0 0 rgba(211, 47, 47, 0.4); transform: scale(1); }
+  50% { box-shadow: 0 0 0 25px rgba(211, 47, 47, 0); transform: scale(1.1); }
+  100% { box-shadow: 0 0 0 0 rgba(211, 47, 47, 0); transform: scale(1); }
+`;
 
 const SignIn: React.FC = () => {
     const navigate = useNavigate();
     const [step, setStep] = useState(1);
     const [icNumber, setIcNumber] = useState('');
-    const [loginMode, setLoginMode] = useState<'voice' | 'security' | null>(null);
     const [errorPopup, setErrorPopup] = useState(false);
-    const [emergencyPopup, setEmergencyPopup] = useState(false); // ✅ NEW
+    const [emergencyPopup, setEmergencyPopup] = useState(false);
     const [loading, setLoading] = useState(false);
+    
+    // Voice password state
+    const [voiceAttempts, setVoiceAttempts] = useState(0);
+    const [isRecording, setIsRecording] = useState(false);
+    const [audioBlob, setAudioBlob] = useState<Blob | null>(null);
+    const [verifyingVoice, setVerifyingVoice] = useState(false);
+    const [voiceError, setVoiceError] = useState<string | null>(null);
+    const mediaRecorderRef = useRef<MediaRecorder | null>(null);
+    
+    // Security question state
+    const [securityQuestion, setSecurityQuestion] = useState<string | null>(null);
+    const [securityAnswer, setSecurityAnswer] = useState('');
+    const [verifyingSecurity, setVerifyingSecurity] = useState(false);
 
     // --- STEP 1: CHECK USER ---
     const handleCheckUser = async () => {
@@ -33,50 +58,213 @@ const SignIn: React.FC = () => {
         setLoading(false);
 
         if (result.success) {
-            setLoginMode(result.mode);
+            // Always start with voice password
             setStep(2);
+            setVoiceAttempts(0);
+            setAudioBlob(null);
+            setVoiceError(null);
         } else {
             setErrorPopup(true);
         }
     };
 
-    // --- STEP 2: VERIFICATION UI ---
-    const renderVerification = () => {
-        if (loginMode === 'voice') {
-            return (
-                <Box sx={{ textAlign: 'center' }}>
-                    <Typography color="primary" variant="h6">🎤 Voice Verification</Typography>
-                    <Typography variant="body2" sx={{ mb: 2 }}>
-                        Please say: "My name is [Your Name]"
-                    </Typography>
+    // Voice recording functions
+    const startRecording = async () => {
+        try {
+            const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+            const mediaRecorder = new MediaRecorder(stream);
+            mediaRecorderRef.current = mediaRecorder;
+            const chunks: BlobPart[] = [];
 
-                    <VoiceInput
-                        label="Listening..."
-                        value=""
-                        onChange={() => { }}
-                    />
-                    <Button variant="contained" sx={{ mt: 2 }}>Verify Voice</Button>
-                </Box>
-            );
+            mediaRecorder.ondataavailable = (e) => chunks.push(e.data);
+            mediaRecorder.onstop = () => {
+                const blob = new Blob(chunks, { type: 'audio/wav' });
+                setAudioBlob(blob);
+            };
+
+            mediaRecorder.start();
+            setIsRecording(true);
+            setVoiceError(null);
+        } catch (err) {
+            alert("Microphone access denied. Please allow permissions.");
+        }
+    };
+
+    const stopRecording = () => {
+        mediaRecorderRef.current?.stop();
+        setIsRecording(false);
+    };
+
+    // Verify voice password
+    const handleVerifyVoice = async () => {
+        if (!audioBlob) {
+            setVoiceError("Please record your voice first.");
+            return;
         }
 
-        if (loginMode === 'security') {
-            return (
-                <Box>
-                    <Typography color="secondary" variant="h6">🔐 Security Question</Typography>
-                    <Typography variant="body2" sx={{ mb: 2 }}>
-                        What is your mother's maiden name?
-                    </Typography>
-
-                    <VoiceInput
-                        label="Answer"
-                        value=""
-                        onChange={() => { }}
-                    />
-                    <Button variant="contained" sx={{ mt: 2 }} fullWidth>Login</Button>
-                </Box>
-            );
+        if (voiceAttempts >= 3) {
+            // Switch to security question
+            await loadSecurityQuestion();
+            return;
         }
+
+        setVerifyingVoice(true);
+        setVoiceError(null);
+
+        const result = await verifyVoice(icNumber, audioBlob);
+        setVerifyingVoice(false);
+
+        if (result.success) {
+            // Voice verified successfully - proceed to login
+            // TODO: Navigate to main page or call login success handler
+            alert("Voice verified! Logging in...");
+            // navigate('/dashboard'); // or wherever you want to go after login
+        } else {
+            // Voice verification failed
+            const newAttempts = voiceAttempts + 1;
+            setVoiceAttempts(newAttempts);
+            setAudioBlob(null);
+            
+            if (newAttempts >= 3) {
+                setVoiceError(`Voice verification failed. ${3 - newAttempts} attempts remaining. Switching to security question...`);
+                setTimeout(async () => {
+                    await loadSecurityQuestion();
+                }, 2000);
+            } else {
+                setVoiceError(`Voice verification failed. ${3 - newAttempts} attempts remaining.`);
+            }
+        }
+    };
+
+    // Load security question
+    const loadSecurityQuestion = async () => {
+        setLoading(true);
+        const result = await initiateLogin(icNumber);
+        setLoading(false);
+        
+        if (result.success && result.question) {
+            setSecurityQuestion(result.question);
+            setStep(3); // Move to security question step
+        } else {
+            alert("Error loading security question. Please try again.");
+        }
+    };
+
+    // Verify security answer
+    const handleVerifySecurity = async () => {
+        if (!securityAnswer || !securityQuestion) return;
+
+        setVerifyingSecurity(true);
+        const result = await verifyLogin(icNumber, securityQuestion, securityAnswer);
+        setVerifyingSecurity(false);
+
+        if (result.success) {
+            // Security answer correct - proceed to login
+            alert("Security answer verified! Logging in...");
+            // navigate('/dashboard'); // or wherever you want to go after login
+        } else {
+            alert("Incorrect answer. Please try again.");
+            setSecurityAnswer('');
+        }
+    };
+
+    // --- STEP 2: VOICE PASSWORD UI ---
+    const renderVoicePassword = () => {
+        return (
+            <Box sx={{ textAlign: 'center' }}>
+                <Typography color="primary" variant="h6" gutterBottom>
+                    🎤 Voice Password
+                </Typography>
+                <Typography variant="body2" sx={{ mb: 2, color: 'text.secondary' }}>
+                    Please record your voice password
+                </Typography>
+
+                {voiceError && (
+                    <Alert severity="error" sx={{ mb: 2 }}>
+                        {voiceError}
+                    </Alert>
+                )}
+
+                {voiceAttempts > 0 && (
+                    <Alert severity="warning" sx={{ mb: 2 }}>
+                        Attempts: {voiceAttempts} / 3
+                    </Alert>
+                )}
+
+                <Box sx={{ height: 200, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', mb: 2 }}>
+                    <Fab
+                        color={isRecording ? "error" : "primary"}
+                        aria-label="record"
+                        onClick={isRecording ? stopRecording : startRecording}
+                        sx={{
+                            width: 110,
+                            height: 110,
+                            mb: 2,
+                            animation: isRecording ? `${pulse} 1.5s infinite` : 'none',
+                            transition: 'all 0.3s ease-in-out'
+                        }}
+                    >
+                        {isRecording ? <StopIcon sx={{ fontSize: 60 }} /> : <MicIcon sx={{ fontSize: 60 }} />}
+                    </Fab>
+
+                    <Typography variant="caption" color="text.secondary">
+                        {isRecording ? "Listening... Tap to Stop" : audioBlob ? "Recording Saved! Ready to Verify." : "Tap to Start Recording"}
+                    </Typography>
+                </Box>
+
+                <Button
+                    variant="contained"
+                    size="large"
+                    fullWidth
+                    onClick={handleVerifyVoice}
+                    disabled={!audioBlob || verifyingVoice || voiceAttempts >= 3}
+                    sx={{ mt: 2 }}
+                >
+                    {verifyingVoice ? <CircularProgress size={24} color="inherit" /> : "Verify Voice"}
+                </Button>
+            </Box>
+        );
+    };
+
+    // --- STEP 3: SECURITY QUESTION UI ---
+    const renderSecurityQuestion = () => {
+        return (
+            <Box>
+                <Typography color="secondary" variant="h6" gutterBottom>
+                    🔐 Security Question
+                </Typography>
+                <Typography variant="body2" sx={{ mb: 2, color: 'text.secondary' }}>
+                    Voice verification failed. Please answer your security question.
+                </Typography>
+
+                {securityQuestion && (
+                    <>
+                        <Box sx={{ mb: 2, p: 2, bgcolor: 'grey.100', borderRadius: 1 }}>
+                            <Typography variant="body1" fontWeight="bold">
+                                {securityQuestion}
+                            </Typography>
+                        </Box>
+
+                        <VoiceInput
+                            label="Answer"
+                            value={securityAnswer}
+                            onChange={(val) => setSecurityAnswer(val)}
+                        />
+
+                        <Button
+                            variant="contained"
+                            size="large"
+                            fullWidth
+                            onClick={handleVerifySecurity}
+                            disabled={!securityAnswer || verifyingSecurity}
+                            sx={{ mt: 2 }}
+                        >
+                            {verifyingSecurity ? <CircularProgress size={24} color="inherit" /> : "Login"}
+                        </Button>
+                    </>
+                )}
+            </Box>
+        );
     };
 
     return (
@@ -119,11 +307,23 @@ const SignIn: React.FC = () => {
                     </Box>
                 )}
 
-                {/* STEP 2 */}
+                {/* STEP 2: Voice Password */}
                 {step === 2 && (
                     <Box>
-                        {renderVerification()}
-                        <Button onClick={() => setStep(1)} sx={{ mt: 1 }}>Back</Button>
+                        {renderVoicePassword()}
+                        <Button onClick={() => setStep(1)} sx={{ mt: 2 }}>Back</Button>
+                    </Box>
+                )}
+
+                {/* STEP 3: Security Question */}
+                {step === 3 && (
+                    <Box>
+                        {renderSecurityQuestion()}
+                        <Button onClick={() => {
+                            setStep(2);
+                            setSecurityAnswer('');
+                            setSecurityQuestion(null);
+                        }} sx={{ mt: 2 }}>Back</Button>
                     </Box>
                 )}
             </Card>

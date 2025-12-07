@@ -47,7 +47,23 @@ export const initiateLogin = async (icNumber: string) => {
     }
 };
 
-// 4. verifyLogin: Step 2 of login (Verify Answer)
+// 4. verifyVoice: Verify voice password during login
+export const verifyVoice = async (icNumber: string, voiceFile: Blob) => {
+    const formData = new FormData();
+    formData.append("icNumber", icNumber);
+    formData.append("voice_file", voiceFile, "voice.wav");
+    
+    try {
+        const res = await axios.post(`${API_URL}/login/verify-voice`, formData, {
+            headers: { 'Content-Type': 'multipart/form-data' }
+        });
+        return res.data;
+    } catch (err: any) {
+        return { success: false, message: err.response?.data?.message || "Voice verification failed" };
+    }
+};
+
+// 5. verifyLogin: Step 2 of login (Verify Answer)
 export const verifyLogin = async (icNumber: string, question: string, answer: string) => {
     const formData = new FormData();
     formData.append("icNumber", icNumber);

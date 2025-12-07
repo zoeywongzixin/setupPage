@@ -36,8 +36,9 @@ const SignUpSecurity: React.FC = () => {
         // const finalData = new FormData(); ...
 
         // ✅ change to JSON Object，
+        // Use same fallback as SignUpVoice to ensure consistency
         const payload = {
-            ic_number: state?.icNumber || "990101-14-5678", //  Backend ic_number
+            ic_number: state?.icNumber || "990101-10-1234", //  Backend ic_number (same fallback as SignUpVoice)
             question1: q1,
             answer1: a1,
             question2: q2,

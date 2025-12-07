@@ -74,8 +74,14 @@ const SignUpVoice: React.FC = () => {
         } finally {
             setUploading(false);
             // Navigate to next step (Security Questions)
-            // Ensure you have a route for '/signup-security' or similar
-            navigate('/signup-security', { state });
+            // Pass the actual values used (including fallbacks) to ensure consistency
+            navigate('/signup-security', { 
+                state: {
+                    icNumber: icNumber,
+                    fullName: fullName,
+                    address: state?.address || ""
+                }
+            });
         }
     };
 
